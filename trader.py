@@ -5,9 +5,9 @@ import logging
 import math
 from typing import Callable
 
-from .config import Settings
-from .grok_client import GrokClient
-from .models import (
+from config import Settings
+from grok_client import GrokClient
+from models import (
     CloseAllResult,
     FairOdds,
     Market,
@@ -16,7 +16,7 @@ from .models import (
     ScoredMarket,
     StatusResult,
 )
-from .polymarket_client import PolymarketClient
+from polymarket_client import PolymarketClient
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +95,13 @@ class Trader:
         ]
         _log(f"Candidates after dedup/liquidity filter: {len(candidate_markets)}")
 
+        # ── NHL FILTER (add or remove as needed) ─────────────────────────────
+        # candidate_markets = [
+        #     m for m in candidate_markets
+        #     if any(word in m.question.upper() for word in ["NHL", "HOCKEY", "STANLEY"])
+        # ]
+        # _log(f"After NHL filter: {len(candidate_markets)} markets")
+
         # ── 4. Score markets via Grok ───────────────────────────────────────
         scored: list[ScoredMarket] = []
         for i, market in enumerate(candidate_markets[: s.max_markets]):
@@ -142,7 +149,7 @@ class Trader:
                 entry.market.yes_price if entry.side == "YES"
                 else entry.market.no_price
             )
-            contracts = size / price  # USDC → contracts at ask
+            contracts = size / price
 
             _log(
                 f"  ORDER {entry.side} {entry.market.question[:50]} "
@@ -191,42 +198,6 @@ class Trader:
             total_position_value=total_pos_val,
             position_values=position_values,
             evaluation_logs=logs,
-        )
-
-    def get_portfolio_status(self) -> StatusResult:
-        balance = self.polymarket.get_usdc_balance() or 0.0
-        positions = self.polymarket.get_open_positions()
-        pvals, total = self._mark_positions(positions)
-        return StatusResult(
-            available_balance_usd=balance,
-            total_position_value=total,
-            position_values=pvals,
-        )
-
-    def close_all_positions(self) -> CloseAllResult:
-        positions = self.polymarket.get_open_positions()
-        attempted = 0
-        placed = 0
-        skipped: list[str] = []
-
-        for pos in positions:
-            token_id = pos.get("asset") or pos.get("token_id") or ""
-            size = float(pos.get("size") or pos.get("amount") or 0)
-            bid = self._get_current_bid(token_id)
-            if not token_id or size <= 0:
-                skipped.append(token_id or "unknown")
-                continue
-            attempted += 1
-            resp = self.polymarket.cancel_and_sell_position(token_id, size, bid)
-            if resp:
-                placed += 1
-            else:
-                skipped.append(token_id)
-
-        return CloseAllResult(
-            attempted_exits=attempted,
-            placed_exits=placed,
-            skipped_tickers=skipped,
         )
 
     # ── private helpers ─────────────────────────────────────────────────────

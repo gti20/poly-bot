@@ -6,8 +6,8 @@ from typing import Any
 
 import requests
 
-from .config import Settings
-from .models import Market, PositionValue
+from config import Settings
+from models import Market, PositionValue
 
 logger = logging.getLogger(__name__)
 
@@ -105,36 +105,44 @@ class PolymarketClient:
             return None
 
     def get_open_positions(self) -> list[dict]:
-        """Return raw open positions from the CLOB. Empty list on failure."""
+        """Return raw open positions from the CLOB."""
         client = self._get_clob_client()
         if client is None:
             return []
         try:
-            return client.get_positions() or []
+            # Try common method names for positions
+            for method_name in ["get_positions", "get_user_positions", "positions"]:
+                if hasattr(client, method_name):
+                    result = getattr(client, method_name)()
+                    return result if isinstance(result, list) else []
         except Exception as exc:
             logger.warning("Positions fetch failed: %s", exc)
-            return []
+        return []
 
     def get_open_orders(self) -> list[dict]:
-        """Return raw open orders. Empty list on failure."""
+        """Return raw open orders."""
         client = self._get_clob_client()
         if client is None:
             return []
         try:
-            return client.get_orders() or []
+            # Try common method names for orders
+            for method_name in ["get_orders", "get_user_orders", "orders"]:
+                if hasattr(client, method_name):
+                    result = getattr(client, method_name)()
+                    return result if isinstance(result, list) else []
         except Exception as exc:
             logger.warning("Orders fetch failed: %s", exc)
-            return []
+        return []
 
+    
     def place_limit_order(
         self,
         token_id: str,
         price: float,
         size: float,
         side: str,  # "BUY" or "SELL"
-        tick_size: str = "0.01",
     ) -> dict | None:
-        """Place a GTC limit order. Returns order response or None."""
+        """Place a GTC limit order — matching the proven copy-trading bot pattern."""
         if self.settings.dry_run:
             logger.info(
                 "[DRY-RUN] Would place %s %.4f @ %.4f (token=%s)",
@@ -148,26 +156,28 @@ class PolymarketClient:
             return None
 
         try:
-            from py_clob_client.clob_types import OrderArgs, OrderType
-            from py_clob_client.clob_types import PartialCreateOrderOptions
+            from py_clob_client.clob_types import OrderArgs
             from py_clob_client.order_builder.constants import BUY, SELL
 
             clob_side = BUY if side.upper() == "BUY" else SELL
-            order = OrderArgs(
+
+            order_args = OrderArgs(
                 token_id=token_id,
                 price=round(price, 4),
                 size=round(size, 2),
                 side=clob_side,
             )
-            resp = client.create_and_post_order(
-                order_args=order,
-                options=PartialCreateOrderOptions(tick_size=tick_size),
-                order_type=OrderType.GTC,
-            )
+
+            # This is the reliable call used in working bots
+            resp = client.create_and_post_order(order_args=order_args)
+
+            logger.info(f"✅ Order placed: {resp}")
             return resp
+
         except Exception as exc:
-            logger.error("Order placement failed: %s", exc)
+            logger.error(f"Order placement failed: {exc}")
             return None
+
 
     def cancel_and_sell_position(
         self,
@@ -183,14 +193,33 @@ class PolymarketClient:
             )
             return {"dry_run": True}
 
-        # Place a limit sell at bid to get fill quickly
         return self.place_limit_order(
             token_id=token_id,
             price=current_bid,
             size=size,
             side="SELL",
         )
+    
+    def cancel_and_sell_position(
+        self,
+        token_id: str,
+        size: float,
+        current_bid: float,
+    ) -> dict | None:
+        """Market-sell an existing position at current bid."""
+        if self.settings.dry_run:
+            logger.info(
+                "[DRY-RUN] Would sell %.4f of token %s @ %.4f bid",
+                size, token_id, current_bid,
+            )
+            return {"dry_run": True}
 
+        return self.place_limit_order(
+            token_id=token_id,
+            price=current_bid,
+            size=size,
+            side="SELL",
+        )
     def auth_diagnostics(self) -> dict:
         """Return basic auth diagnostic info."""
         client = self._get_clob_client()
@@ -208,27 +237,31 @@ class PolymarketClient:
     def _get_clob_client(self) -> Any | None:
         if self._clob_client is not None:
             return self._clob_client
+
         pk = self.settings.polymarket_private_key
-        funder = self.settings.polymarket_funder
         if not pk:
             logger.warning("POLYMARKET_PRIVATE_KEY not set; read-only mode")
             return None
+
         try:
             from py_clob_client.client import ClobClient
 
-            sig_type = 1 if funder else 0
             client = ClobClient(
-                CLOB_HOST,
+                host=CLOB_HOST,
                 key=pk,
                 chain_id=self.settings.polymarket_chain_id,
-                signature_type=sig_type,
-                funder=funder or None,
+                signature_type=0,   # Change to 1 if using Magic/Email wallet
+                funder=self.settings.polymarket_funder or None,
             )
+
             client.set_api_creds(client.create_or_derive_api_creds())
+
             self._clob_client = client
+            logger.info("✅ CLOB client initialized")
             return client
+
         except Exception as exc:
-            logger.error("CLOB client init failed: %s", exc)
+            logger.error(f"CLOB client init failed: {exc}")
             return None
 
     def _parse_gamma_market(self, raw: dict) -> Market | None:

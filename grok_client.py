@@ -6,8 +6,8 @@ import logging
 
 import requests
 
-from .config import Settings
-from .models import FairOdds, Market
+from config import Settings
+from models import FairOdds, Market
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +21,10 @@ IMPORTANT:
 - Reason step by step, then emit a JSON object as the LAST thing in your response.
 - The JSON must be: {"fair_yes_probability": <float>, "rationale": "<one sentence>"}
 - No markdown fences around the JSON.
+
+NHL-SPECIFIC GUIDANCE:
+- For any NHL market, ALWAYS consider: rest schedules, goalie matchup, injuries, home/away advantage, recent form, pace of play, back-to-back games, and travel fatigue.
 """
-
-
 class GrokClient:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -88,6 +89,16 @@ class GrokClient:
             lines.append(f"Resolution date: {market.end_date_iso}")
         if market.description and market.description != market.question:
             lines.append(f"Description: {market.description[:400]}")
+
+        # Force NHL awareness on ALL sports (or just NHL)
+        if any(word in market.question.upper() for word in ["NHL", "HOCKEY", "STANLEY", "MAPLE LEAFS", "RANGERS", "OILERS"]):
+            lines.append(
+                "NHL-SPECIFIC: Consider rest schedules, goalie matchup, injuries, "
+                "home/away advantage, recent form, pace of play, back-to-backs, and travel fatigue."
+            )
+        else:
+            lines.append("This is a non-NHL market — reason normally.")
+
         lines.append(
             "\nGiven this information, what is your best estimate of the "
             "true probability that YES resolves?"

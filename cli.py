@@ -6,8 +6,8 @@ import logging
 import sys
 from dataclasses import asdict
 
-from .config import load_settings
-from .trader import Trader
+from config import load_settings
+from trader import Trader
 
 logging.basicConfig(
     level=logging.INFO,

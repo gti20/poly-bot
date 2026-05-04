@@ -1,0 +1,9 @@
+py-clob-client
+requests
+python-dotenv
+streamlit
+requests
+python-dotenv
+pydantic  # optional but nice
+py-clob-client
+streamlit
