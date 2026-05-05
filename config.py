@@ -11,7 +11,9 @@ from dotenv import load_dotenv
 @dataclass
 class Settings:
     """All configuration for the trader."""
-
+    # === Multi-Signal Fusion ===
+    use_news_sentiment: bool = True
+    use_sharp_signal: bool = True
     # === Required fields (no defaults) ===
     polymarket_private_key: str = field(default="")
     grok_api_key: str = field(default="")
@@ -41,11 +43,20 @@ class Settings:
     exit_edge_threshold: float = -0.02
     dry_run: bool = True
 
+    # === Shannon/Thorp Info Theory Settings (NEW) ===
+    use_info_theory: bool = True
+    min_edge_bits: float = 0.08
+    entropy_history_length: int = 20
+    insider_sigma: float = 3.0
+    fair_value_grok_weight: float = 0.75
+
 
 def load_settings() -> Settings:
     """Load settings from .env file."""
     load_dotenv()  # Loads .env if present
-
+        use_news_sentiment=os.getenv("TRADER_USE_NEWS_SENTIMENT", "true").lower() == "true",
+        use_sharp_signal=os.getenv("TRADER_USE_SHARP_SIGNAL", "true").lower() == "true",
+        
     return Settings(
         polymarket_private_key=os.getenv("POLYMARKET_PRIVATE_KEY", ""),
         grok_api_key=os.getenv("GROK_API_KEY", ""),
@@ -66,4 +77,11 @@ def load_settings() -> Settings:
         enable_exits=os.getenv("TRADER_ENABLE_EXITS", "true").lower() == "true",
         exit_edge_threshold=float(os.getenv("TRADER_EXIT_EDGE_THRESHOLD", -0.02)),
         dry_run=os.getenv("TRADER_DRY_RUN", "true").lower() == "true",
+
+        # Info Theory
+        use_info_theory=os.getenv("TRADER_USE_INFO_THEORY", "true").lower() == "true",
+        min_edge_bits=float(os.getenv("TRADER_MIN_EDGE_BITS", 0.08)),
+        entropy_history_length=int(os.getenv("TRADER_ENTROPY_HISTORY_LENGTH", 20)),
+        insider_sigma=float(os.getenv("TRADER_INSIDER_SIGMA", 3.0)),
+        fair_value_grok_weight=float(os.getenv("TRADER_FAIR_VALUE_GROK_WEIGHT", 0.75)),
     )

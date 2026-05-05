@@ -1,9 +1,7 @@
-py-clob-client
-requests
+openai>=1.0.0
+scipy
+numpy
 python-dotenv
-streamlit
 requests
-python-dotenv
-pydantic  # optional but nice
-py-clob-client
-streamlit
+web3
+pandas   # useful for future backtest analysis

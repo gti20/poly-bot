@@ -85,20 +85,20 @@ def main() -> None:
         return
 
     if args.status:
-        status = trader.get_portfolio_status()
-        print(f"\nAvailable USDC: ${status.available_balance_usd:.2f}")
-        print(f"Position value: ${status.total_position_value:.2f}")
-        print(f"Total equity:   ${status.available_balance_usd + status.total_position_value:.2f}")
-        if status.position_values:
-            print("\nOpen positions:")
-            for pv in status.position_values:
-                print(
-                    f"  {pv.side:3s}  {pv.question[:55]:<55s}"
-                    f"  size={pv.size:.2f}  avg={pv.avg_price:.4f}"
-                    f"  bid={pv.current_bid:.4f}  mark=${pv.mark_value:.2f}"
-                )
-        return
+        # Temporary workaround until get_portfolio_status is added
+        print("\n=== Portfolio Status ===")
+        result = trader.run_once(top_n=0, stream_progress=False)  # top_n=0 skips new orders
+        print(f"Available USDC:   ${result.effective_bankroll_usd:.2f}")
+        print(f"Position value:   ${result.total_position_value:.2f}")
+        print(f"Total equity:     ${result.effective_bankroll_usd + result.total_position_value:.2f}")
 
+        if result.position_values:
+            print("\nOpen positions:")
+            for pv in result.position_values:
+                print(f"  {pv.side:3s}  {pv.question[:60]:<60s}  mark=${pv.mark_value:.2f}")
+        else:
+            print("\nNo open positions.")
+        return
     if args.close_all:
         result = trader.close_all_positions()
         print(f"\nClose-all: attempted={result.attempted_exits} placed={result.placed_exits}")

@@ -1,0 +1,38 @@
+[
+  {
+    "timestamp": "2026-05-05T00:48:13.561744",
+    "equity": 50.0,
+    "bankroll": 50.0,
+    "position_value": 0.0,
+    "placed_orders": 5,
+    "scored": 40,
+    "drawdown_pct": 0.0
+  },
+  {
+    "timestamp": "2026-05-05T01:11:58.840229",
+    "equity": 50.0,
+    "bankroll": 50.0,
+    "position_value": 0.0,
+    "placed_orders": 5,
+    "scored": 40,
+    "drawdown_pct": 0.0
+  },
+  {
+    "timestamp": "2026-05-05T01:36:40.103949",
+    "equity": 50.0,
+    "bankroll": 50.0,
+    "position_value": 0.0,
+    "placed_orders": 5,
+    "scored": 39,
+    "drawdown_pct": 0.0
+  },
+  {
+    "timestamp": "2026-05-05T02:01:18.880272",
+    "equity": 50.0,
+    "bankroll": 50.0,
+    "position_value": 0.0,
+    "placed_orders": 5,
+    "scored": 19,
+    "drawdown_pct": 0.0
+  }
+]

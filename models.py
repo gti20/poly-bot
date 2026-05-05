@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List
 
-
+   
 @dataclass
 class Market:
     """Represents a Polymarket binary market."""
@@ -35,7 +35,9 @@ class ScoredMarket:
     side: str  # "YES" or "NO"
     edge: float
     divergence: float
-
+    edge_bits: float = 0.0
+    entropy: float = 0.0
+    fused_prob: float = 0.0
 
 @dataclass
 class PositionValue:

@@ -3,7 +3,17 @@ from cli import main as run_strategy   # runs your existing CLI logic
 
 print("🚀 Starting Polymarket Grok Trader (continuous mode)...")
 print("Press Ctrl+C to stop\n")
+import subprocess
+import sys
 
+def install(package):
+    subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+
+try:
+    import openai
+except ImportError:
+    print("Installing missing openai package...")
+    install("openai")
 count = 0
 while True:
     count += 1
