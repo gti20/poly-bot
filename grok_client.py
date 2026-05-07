@@ -1,6 +1,8 @@
-"""Grok API Client for fair odds and news sentiment"""
+"""Grok API Client — POWERHOUSE: rich CoT, JSON, ensemble"""
 import logging
-from typing import Optional
+import json
+from typing import Optional, List
+from datetime import datetime
 
 from openai import OpenAI
 
@@ -19,49 +21,62 @@ class GrokClient:
         )
 
     def estimate_fair_odds(self, market: Market) -> Optional[FairOdds]:
-        """Get Grok's probability estimate for a market."""
-        prompt = (
-            f"Market question: {market.question}\n"
-            f"Description: {market.description or 'No additional description.'}\n\n"
-            "You are an expert prediction market trader. "
-            "What is the true probability (0.0 to 1.0) that the YES outcome resolves True? "
-            "Respond with ONLY a single float number between 0 and 1."
+        """Rich CoT + structured JSON + 3-run ensemble."""
+        system_prompt = (
+            "You are a world-class +EV prediction market trader. "
+            "Think step-by-step: base rates → news → resolution rules → crowd biases. "
+            "Output ONLY valid JSON: "
+            '{"fair_yes_probability": 0.XX, "confidence": 0-100, "reasoning": "one sentence"}'
         )
 
+        user_prompt = (
+            f"Date: {datetime.now().isoformat()}\n"
+            f"Market: {market.question}\n"
+            f"Description: {market.description or 'No description.'}\n"
+            f"Closes: {getattr(market, 'end_date_iso', 'unknown')}\n"
+            f"Current YES price: {getattr(market, 'yes_price', 'N/A')}\n"
+            f"Volume: ${getattr(market, 'volume', 'N/A')} | Liquidity: ${getattr(market, 'liquidity', 'N/A')}\n\n"
+            "What is the TRUE P(YES resolves True)?"
+        )
+
+        probs: List[float] = []
+        for i in range(3):  # ensemble
+            try:
+                resp = self.client.chat.completions.create(
+                    model=self.settings.grok_model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    temperature=self.settings.grok_temperature,
+                    max_tokens=self.settings.grok_max_tokens,
+                )
+                data = json.loads(resp.choices[0].message.content.strip())
+                p = float(data["fair_yes_probability"])
+                probs.append(max(0.01, min(0.99, p)))
+            except Exception as e:
+                logger.warning(f"Grok run {i+1} failed: {e}")
+
+        if not probs:
+            return None
+
+        fair_p = sum(probs) / len(probs)
+        return FairOdds(
+            fair_yes_probability=fair_p,
+            rationale="Ensemble of 3 Grok CoT runs"
+        )
+
+    def get_news_sentiment(self, market: Market) -> float:
+        """Lightweight news sentiment fallback."""
+        # (same as original or enhanced prompt — keep your existing logic if preferred)
+        prompt = f"Market: {market.question}\nBased on latest news only, P(YES)? Single float 0-1."
         try:
-            response = self.client.chat.completions.create(
+            resp = self.client.chat.completions.create(
                 model=self.settings.grok_model,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=20,
-                temperature=0.0,
+                temperature=0.2,
             )
-            prob_text = response.choices[0].message.content.strip()
-            prob = float(prob_text)
-            prob = max(0.01, min(0.99, prob))
-
-            return FairOdds(fair_yes_probability=prob)
-        except Exception as e:
-            logger.warning(f"Grok estimate failed: {e}")
-            return None
-
-    def get_news_sentiment(self, market: Market) -> float:
-        """Grok-powered news sentiment probability for the market."""
-        prompt = (
-            f"Market: {market.question}\n"
-            f"Description: {market.description or 'No extra info'}\n\n"
-            f"Based ONLY on the latest public news and sentiment (ignore the current market price), "
-            f"what is your estimated probability that the YES outcome is correct? "
-            f"Respond with a single float between 0.0 and 1.0 only."
-        )
-        try:
-            response = self.client.chat.completions.create(
-                model=self.settings.grok_model,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=10,
-                temperature=0.0,
-            )
-            prob = float(response.choices[0].message.content.strip())
-            return max(0.01, min(0.99, prob))
-        except Exception as e:
-            logger.warning(f"News sentiment failed: {e}")
+            return max(0.01, min(0.99, float(resp.choices[0].message.content.strip())))
+        except Exception:
             return 0.5
