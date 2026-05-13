@@ -1,6 +1,8 @@
 """Grok API Client — POWERHOUSE: rich CoT, JSON, ensemble"""
 import logging
 import json
+import asyncio
+from typing import Optional
 from typing import Optional, List
 from datetime import datetime
 
@@ -67,16 +69,72 @@ class GrokClient:
         )
 
     def get_news_sentiment(self, market: Market) -> float:
-        """Lightweight news sentiment fallback."""
-        # (same as original or enhanced prompt — keep your existing logic if preferred)
-        prompt = f"Market: {market.question}\nBased on latest news only, P(YES)? Single float 0-1."
+        """Improved news sentiment with better prompt and fallback"""
+        prompt = f"""
+Market: {market.question}
+Description: {market.description or 'No description available.'}
+
+Based on recent news, public sentiment, and expert analysis (ignore current market odds), 
+what is the probability that the YES outcome happens? 
+
+Answer with ONLY a number between 0.0 and 1.0. Do not explain.
+"""
+
         try:
-            resp = self.client.chat.completions.create(
+            response = self.client.chat.completions.create(
                 model=self.settings.grok_model,
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=20,
-                temperature=0.2,
+                max_tokens=10,
+                temperature=0.0,
             )
-            return max(0.01, min(0.99, float(resp.choices[0].message.content.strip())))
-        except Exception:
+            text = response.choices[0].message.content.strip()
+            prob = float(text)
+            return max(0.05, min(0.95, prob))
+        except Exception as e:
+            print(f"    ⚠️ News sentiment failed: {e} → using 0.5")
             return 0.5
+    async def _fetch_single_prediction(self, market: Market, system_prompt: str) -> Optional[float]:
+        """Helper for parallel LLM calls."""
+        # Note: We REMOVE the market.yes_price from the prompt to avoid anchoring bias
+        user_prompt = (
+            f"Market: {market.question}\n"
+            f"Description: {market.description or 'No description.'}\n"
+            f"Closes: {getattr(market, 'end_date_iso', 'unknown')}\n"
+        )
+        try:
+            # Use run_in_executor if the openai client is synchronous
+            loop = asyncio.get_event_loop()
+            resp = await loop.run_in_executor(None, lambda: self.client.chat.completions.create(
+                model=self.settings.grok_model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                response_format={"type": "json_object"}
+            ))
+            data = json.loads(resp.choices[0].message.content.strip())
+            return float(data["fair_yes_probability"])
+        except Exception as e:
+            logger.warning(f"Grok call failed: {e}")
+            return None
+
+    async def estimate_fair_odds(self, market: Market) -> Optional[FairOdds]:
+        """Run 3-run ensemble in PARALLEL."""
+        system_prompt = (
+            "You are a world-class +EV prediction market trader. "
+            "Think step-by-step. Output ONLY JSON: "
+            '{"fair_yes_probability": 0.XX, "reasoning": "..."}'
+        )
+        
+        # Parallel execution to solve the latency bottleneck
+        tasks = [self._fetch_single_prediction(market, system_prompt) for _ in range(3)]
+        results = await asyncio.gather(*tasks)
+        
+        valid_probs = [p for p in results if p is not None]
+        if not valid_probs:
+            return None
+
+        return FairOdds(
+            fair_yes_probability=sum(valid_probs) / len(valid_probs),
+            rationale=f"Ensemble of {len(valid_probs)} parallel Grok runs"
+        )
